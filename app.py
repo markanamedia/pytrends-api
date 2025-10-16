@@ -64,40 +64,35 @@ def related():
     if not q:
         return jsonify({"error": "Missing q param"}), 400
 
-    cache_key = (q.lower(), geo)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return jsonify(cached)
-
-    now = time.time()
-    if cache_key in last_hit and (now - last_hit[cache_key]) < COOLDOWN_SECONDS:
-        # Gentle local throttle to avoid 429s
-        time.sleep(max(0, COOLDOWN_SECONDS - (now - last_hit[cache_key])))
-
-    pytrends = get_pytrends()
     try:
+        pytrends = get_pytrends()
         pytrends.build_payload([q], timeframe="today 12-m", geo=geo)
         related_queries = pytrends.related_queries()
-        # Structure varies (keyed by the keyword)
-        data = related_queries.get(q, {}) if related_queries else {}
+        if not related_queries or q not in related_queries:
+            return jsonify({"error": f"No related data for '{q}'"}), 404
+
+        data = related_queries[q]
+        top = data.get("top")
+        rising = data.get("rising")
+
         result = {
             "query": q,
             "geo": geo,
             "related_queries": {
-                "top": data.get("top").to_dict("records") if data.get("top") is not None else [],
-                "rising": data.get("rising").to_dict("records") if data.get("rising") is not None else [],
+                "top": top.to_dict("records") if top is not None else [],
+                "rising": rising.to_dict("records") if rising is not None else [],
             },
         }
-        cache.set(cache_key, result)
-        last_hit[cache_key] = time.time()
         return jsonify(result)
 
     except Exception as e:
-        # pytrends raises exceptions; if it's a 429, advertise retry
         msg = str(e)
         if "429" in msg or "Too Many Requests" in msg:
             return jsonify({"error": "Rate limited by Google (429). Please retry later."}), 429
-        return jsonify({"error": msg}), 500
+        if "Failed to connect" in msg or "Connection aborted" in msg:
+            return jsonify({"error": "Google connection failed. Try again soon."}), 503
+        return jsonify({"error": f"Internal error: {msg}"}), 500
+
 
 @app.route("/")
 def health():
