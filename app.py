@@ -44,17 +44,17 @@ COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS", 5))
 last_hit = {}
 
 def get_pytrends():
-    # Good UA helps reduce blocks
     ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
           "AppleWebKit/537.36 (KHTML, like Gecko) "
           "Chrome/127.0.0.0 Safari/537.36")
     return TrendReq(
         hl="en-US",
         tz=360,
-        retries=3,            # try a few times
-        backoff_factor=2,     # 1s, 2s, 4s
-        requests_args={"headers": {"User-Agent": ua}, "timeout": (5, 30)}
+        retries=2,
+        backoff_factor=1,
+        requests_args={"headers": {"User-Agent": ua}, "timeout": (5, 15)}
     )
+
 
 @app.route("/trends/related")
 def related():
