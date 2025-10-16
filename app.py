@@ -44,6 +44,12 @@ COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS", 5))
 last_hit = {}
 
 def get_pytrends():
+    """
+    IMPORTANT FIX:
+    - Set timeout via the top-level TrendReq(timeout=...) parameter
+    - Do NOT pass 'timeout' again inside requests_args
+      (pytrends forwards both, which leads to 'multiple values for timeout')
+    """
     ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
           "AppleWebKit/537.36 (KHTML, like Gecko) "
           "Chrome/127.0.0.0 Safari/537.36")
@@ -52,7 +58,9 @@ def get_pytrends():
         tz=360,
         retries=2,
         backoff_factor=1,
-        requests_args={"headers": {"User-Agent": ua}, "timeout": (5, 15)}
+        timeout=(5, 15),  # <-- set timeout here
+        # Do NOT include 'timeout' in requests_args
+        requests_args={"headers": {"User-Agent": ua}}
     )
 
 
@@ -63,6 +71,18 @@ def related():
 
     if not q:
         return jsonify({"error": "Missing q param"}), 400
+
+    # Optional: quick cooldown to reduce chances of 429 on repeat queries
+    key = (q.lower(), geo)
+    now = time.time()
+    if key in last_hit and (now - last_hit[key]) < COOLDOWN_SECONDS:
+        time.sleep(max(0, COOLDOWN_SECONDS - (now - last_hit[key])))
+    last_hit[key] = time.time()
+
+    # Optional: small cache to reduce repeated calls
+    cached = cache.get(key)
+    if cached is not None:
+        return jsonify(cached)
 
     try:
         pytrends = get_pytrends()
@@ -83,6 +103,9 @@ def related():
                 "rising": rising.to_dict("records") if rising is not None else [],
             },
         }
+
+        # save to cache
+        cache.set(key, result)
         return jsonify(result)
 
     except Exception as e:
@@ -97,6 +120,7 @@ def related():
 @app.route("/")
 def health():
     return jsonify({"ok": True}), 200
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
