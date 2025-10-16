@@ -4,7 +4,5 @@ pytrends==4.9.2
 gunicorn==21.2.0
 pandas==1.5.3
 numpy==1.24.4
-
-# make sure the build backend is present even if a package needs it
 setuptools==68.2.2
 wheel==0.41.2
